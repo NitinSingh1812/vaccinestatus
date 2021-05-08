@@ -1,0 +1,170 @@
+<html>
+<head>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>CoVID Vaccine (Mumbai & Thane)</title>
+    <link href="/webjars/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .container {
+            padding: 0;
+            margin: 0 auto;
+            margin: 1rem;
+        }
+        .align-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2rem 0;
+            border-bottom: 1px solid lightgrey;
+        }
+        h3 {
+            margin: 0;
+        }
+        .search-area {
+            background: lightgrey;
+            padding: 2rem 1rem;
+        }
+        #search-box {
+            width: 50%;
+        }
+        #message-history {
+            border: 1px solid lightgrey;
+        }
+        #message-history.table thead tr th {
+            vertical-align: middle;
+            border-bottom: none;
+            text-align: center;
+        }
+        #message-history.table tbody td {
+            vertical-align: middle;
+            text-align: center;
+        }
+    </style>
+    <script src="/webjars/jquery/jquery.min.js"></script>
+    <script src="/webjars/sockjs-client/sockjs.min.js"></script>
+    <script src="/webjars/stomp-websocket/stomp.min.js"></script>
+    <script type="text/javascript">
+        var stompClient = null;
+        $(document).ready(function() {
+            connect();
+            getOnLoad();
+            searchEventFunction();
+        });
+
+        function getOnLoad() {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) {
+                    processResponse(xhttp.responseText);
+                }
+            };
+            let _hostName = window.location.hostname;
+            if(_hostName=='localhost') {
+                _hostName = 'localhost:5000';
+            }
+            const url = `http://${_hostName}/status`;
+            xhttp.open("GET", url, true);
+            xhttp.send();
+        }
+
+        function connect() {
+            var socket = new SockJS('/vaccineapp-websocket');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+            stompClient.connect({}, function (frame) {
+                stompClient.subscribe('/vaccine/status', function (message) {
+                    processResponse(message.body);
+                    filterTableRows($("#myInput").val());
+                });
+            });
+        }
+
+        function processResponse(response) {
+            $("#messages").empty();
+            const messageBody = JSON.parse(response);
+            const hospitalsArray = messageBody.centers;
+            if(hospitalsArray && hospitalsArray.length>0) {
+                hospitalsArray.forEach(hospital=>{
+                    if(hospital.sessions) {
+                        hospital.sessions.forEach(session=>{
+                            if(session.available_capacity>0){
+                                showMessage(hospital, session);
+                            }
+                        });
+                    }
+                });
+            } else {
+                showMessage();
+            }
+        }
+
+        function searchEventFunction() {
+            $("#myInput").on("keyup", function() {
+                var value = $(this).val();
+                filterTableRows(value);
+            });
+        }
+
+        function filterTableRows(value) {
+            $("#messages tr").filter(function() {
+                $(this).toggle($(this).text().toLowerCase().indexOf(value.toLowerCase()) > -1)
+            });
+        }
+
+        function showMessage(hospital, session) {
+            if(hospital) {
+                const {name,address,pincode,fee_type,district_name} = hospital;
+                const {available_capacity,min_age_limit,vaccine,date} = session;
+                const templateStr = `<tr><td>${date}</td>
+                                       <td>${name}<br/>${address}</td>
+                                       <td>${pincode}</td>
+                                       <td>${district_name}</td>
+                                       <td>${available_capacity}</td>
+                                       <td>${min_age_limit}</td>
+                                       <td>${vaccine}</td>
+                                       <td>${fee_type}</td></tr>`;
+                $("#messages").append(templateStr);
+            } else {
+                $("#messages").append(`<tr><td colspan="8">Vaccines not available at the moment.</td></tr>`);
+            }
+            $("#seconds").text(`Last Updated: ${(new Date()).toLocaleString()}`);
+        }
+
+    </script>
+</head>
+<body>
+<div>
+    <div class="container" style="margin-top: 50px; padding:0; margin: 0 auto">
+        <div class="align-info">
+                <h3>Mumbai & Thane Vaccine Tracker</h3>
+                <div>*Information is updated from <a href="https://www.cowin.gov.in/home" target="_blank">cowin.gov.in</a></div>
+        </div>
+        <div class="align-info search-area">
+        <div id="search-box">
+            <input class="form-control" id="myInput" type="text" placeholder="Search by city, pincode, vaccine name or hospital name..."/>
+        </div>
+        <div id="refresh-info">
+            <div id="seconds"></div><div style="float: right">Next update in 2 minute.</div>
+        </div>
+        </div>
+                <table id="message-history" class="table table-striped">
+                    <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th width="100px">Hospital</th>
+                        <th>Pincode</th>
+                        <th>District</th>
+                        <th>Available Vaccines</th>
+                        <th>Min Age Limit</th>
+                        <th>Vaccine Name</th>
+                        <th>Fee</th>
+                    </tr>
+                    </thead>
+                    <tbody id="messages">
+                    </tbody>
+                </table>
+    </div>
+</div>
+</body>
+</html>
